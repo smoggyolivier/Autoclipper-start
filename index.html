@@ -1,0 +1,26 @@
+<!doctype html><html lang="nl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AutoClipper"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icoon180.png"><meta name="theme-color" content="#16a34a">
+<title>AutoClipper</title>
+<style>
+:root{--bg:#16a34a;--tekst:#fff}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--tekst);
+font:18px/1.5 -apple-system,system-ui,sans-serif;text-align:center;padding:16px;box-sizing:border-box}
+button{margin-top:16px;padding:12px 20px;border-radius:10px;border:0;font:inherit;font-weight:600;color:#16a34a;background:#fff}
+</style></head><body><div><div id="t">Even laden…</div><button id="k" hidden onclick="location.reload()">Opnieuw proberen</button></div>
+<script>
+(function(){
+  var t=document.getElementById('t'),k=document.getElementById('k');
+  var kanaal=(location.hash||'').slice(1);
+  try{ if(kanaal) localStorage.setItem('k',kanaal); else kanaal=localStorage.getItem('k')||''; }catch(e){}
+  if(!/^[A-Za-z0-9_-]{16,64}$/.test(kanaal)){ t.textContent='Deze pagina werkt alleen met je eigen link.'; return; }
+  fetch('https://ntfy.sh/'+kanaal+'/json?poll=1&since=all').then(function(r){return r.text();}).then(function(tekst){
+    var link=null;
+    tekst.split('\n').forEach(function(r){ try{ var m=JSON.parse(r); if(m.event==='message'&&/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/[A-Za-z0-9_-]+$/.test(m.message)) link=m.message; }catch(e){} });
+    if(link){ location.replace(link); } else { t.textContent='Je overzicht is even niet bereikbaar. Probeer het over een paar minuten opnieuw.'; k.hidden=false; }
+  }).catch(function(){ t.textContent='Geen internet? Probeer het opnieuw.'; k.hidden=false; });
+})();
+</script></body></html>
