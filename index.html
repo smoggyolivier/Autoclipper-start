@@ -2,18 +2,33 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="AutoClipper"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AutoClipper"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="icoon180.png"><meta name="theme-color" content="#16a34a">
 <title>AutoClipper</title>
 <style>
 :root{--bg:#16a34a;--tekst:#fff}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--tekst);
-font:18px/1.5 -apple-system,system-ui,sans-serif;text-align:center;padding:16px;box-sizing:border-box}
-button{margin-top:16px;padding:12px 20px;border-radius:10px;border:0;font:inherit;font-weight:600;color:#16a34a;background:#fff}
-</style></head><body><div><div id="t">Even laden…</div><button id="k" hidden onclick="location.reload()">Opnieuw proberen</button></div>
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tekst);font:18px/1.5 -apple-system,system-ui,sans-serif}
+#vak{min-height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;box-sizing:border-box}
+#vak>div{max-width:420px}
+button,.knop{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:10px;border:0;font:inherit;font-weight:600;
+color:#16a34a;background:#fff;text-decoration:none}
+.klein{font-size:15px;opacity:.9}
+#app{position:fixed;left:0;right:0;bottom:0;top:env(safe-area-inset-top);width:100%;height:calc(100% - env(safe-area-inset-top));
+border:0;background:#fff;display:none}
+#bel{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));display:none;align-items:center;gap:10px;
+background:#16a34a;color:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:15px}
+#bel button{margin:0;padding:8px 12px;white-space:nowrap}
+#bel .x{background:transparent;color:#fff;padding:8px}
+</style></head><body>
+<div id="vak"><div><div id="t">Even laden…</div><div id="extra"></div>
+<button id="k" hidden onclick="location.reload()">Opnieuw proberen</button></div></div>
+<iframe id="app" title="AutoClipper"></iframe>
+<div id="bel"><span style="flex:1">🔔 Meldingen in deze app aanzetten?</span><button id="belaan" type="button">Aanzetten</button>
+<button class="x" id="belweg" type="button" aria-label="Sluiten">✕</button></div>
 <script>
 (function(){
-  var t=document.getElementById('t'),k=document.getElementById('k');
+  var t=document.getElementById('t'),k=document.getElementById('k'),extra=document.getElementById('extra');
+  var app=window.navigator.standalone||matchMedia('(display-mode: standalone)').matches;
   var kanaal=(location.hash||'').slice(1);
   try{ if(kanaal) localStorage.setItem('k',kanaal); else kanaal=localStorage.getItem('k')||''; }catch(e){}
   if(!/^[A-Za-z0-9_-]{16,64}$/.test(kanaal)){ t.textContent='Deze pagina werkt alleen met je eigen link.'; return; }
@@ -38,9 +53,42 @@ button{margin-top:16px;padding:12px 20px;border-radius:10px;border:0;font:inheri
           .then(function(pt){ var l=new TextDecoder().decode(pt); return patroon.test(l)?{t:d.t,l:l}:null; });
       }).catch(function(){return null;});
   }
+  function b64(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';var r=atob(s),u=new Uint8Array(r.length);for(var i=0;i<r.length;i++)u[i]=r.charCodeAt(i);return u;}
+  function meldingen(link){   // pushmeldingen voor deze app (vast adres, blijft werken als de link verandert)
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)) return;
+    function stuur(pad,abo){ return fetch(link+pad,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(abo)}); }
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      return reg.pushManager.getSubscription().then(function(abo){
+        if(abo&&Notification.permission==='granted'){ stuur('/push',abo); return; }   // al aan: aanmelding vernieuwen
+        var weg=0; try{ weg=+localStorage.getItem('belweg')||0; }catch(e){}
+        if(Notification.permission==='denied'||Date.now()-weg<7*864e5) return;
+        var bel=document.getElementById('bel'); bel.style.display='flex';
+        document.getElementById('belweg').onclick=function(){ bel.style.display='none'; try{localStorage.setItem('belweg',Date.now());}catch(e){} };
+        document.getElementById('belaan').onclick=function(){
+          var knop=this; knop.disabled=true; knop.textContent='Even…';
+          Notification.requestPermission().then(function(p){
+            if(p!=='granted'){ bel.style.display='none'; return; }
+            return fetch(link+'/pushsleutel').then(function(r){return r.text();}).then(function(s){
+              return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(s.trim())});
+            }).then(function(a){ return stuur('/pushtest',a); }).then(function(){ bel.style.display='none'; });
+          }).catch(function(e){ knop.disabled=false; knop.textContent='Opnieuw'; });
+        };
+      });
+    }).catch(function(){});
+  }
   Promise.all([viaNtfy(),viaGithub()]).then(function(r){
     var beste=null; r.forEach(function(x){ if(x&&(!beste||x.t>beste.t)) beste=x; });
-    if(beste){ location.replace(beste.l); } else { t.textContent='Je overzicht is even niet bereikbaar. Probeer het over een paar minuten opnieuw.'; k.hidden=false; }
+    if(!beste){ t.textContent='Je overzicht is even niet bereikbaar. Probeer het over een paar minuten opnieuw.'; k.hidden=false; return; }
+    if(app){   // vanaf het beginscherm: overzicht binnen deze app tonen
+      var f=document.getElementById('app'); f.src=beste.l; f.style.display='block';
+      document.getElementById('vak').style.display='none';
+      meldingen(beste.l);
+      return;
+    }
+    t.innerHTML='<b>Zet deze pagina op je beginscherm</b>';
+    extra.innerHTML='<p class="klein">Tik onderin Safari op de deel-knop (vierkantje met pijl omhoog) → <b>Zet op beginscherm</b> → <b>Voeg toe</b>. '+
+      'Dan heb je een AutoClipper-app die altijd werkt, ook als de link verandert.</p>';
+    var a=document.createElement('a'); a.className='knop'; a.href=beste.l; a.textContent='Of open nu het overzicht'; extra.appendChild(a);
   });
 })();
 </script></body></html>
