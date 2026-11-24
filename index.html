@@ -17,10 +17,30 @@ button{margin-top:16px;padding:12px 20px;border-radius:10px;border:0;font:inheri
   var kanaal=(location.hash||'').slice(1);
   try{ if(kanaal) localStorage.setItem('k',kanaal); else kanaal=localStorage.getItem('k')||''; }catch(e){}
   if(!/^[A-Za-z0-9_-]{16,64}$/.test(kanaal)){ t.textContent='Deze pagina werkt alleen met je eigen link.'; return; }
-  fetch('https://ntfy.sh/'+kanaal+'/json?poll=1&since=all').then(function(r){return r.text();}).then(function(tekst){
-    var link=null;
-    tekst.split('\n').forEach(function(r){ try{ var m=JSON.parse(r); if(m.event==='message'&&/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/[A-Za-z0-9_-]+$/.test(m.message)) link=m.message; }catch(e){} });
-    if(link){ location.replace(link); } else { t.textContent='Je overzicht is even niet bereikbaar. Probeer het over een paar minuten opnieuw.'; k.hidden=false; }
-  }).catch(function(){ t.textContent='Geen internet? Probeer het opnieuw.'; k.hidden=false; });
+  var patroon=/^https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com\/[A-Za-z0-9_-]+$/;
+  function viaNtfy(){
+    return fetch('https://ntfy.sh/'+kanaal+'/json?poll=1&since=all').then(function(r){return r.text();}).then(function(tekst){
+      var beste=null;
+      tekst.split('\n').forEach(function(r){ try{ var m=JSON.parse(r); if(m.event==='message'&&patroon.test(m.message)) beste={t:m.time,l:m.message}; }catch(e){} });
+      return beste;
+    }).catch(function(){return null;});
+  }
+  function sha(s){ return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); }
+  function hex(b){ return Array.prototype.map.call(new Uint8Array(b),function(x){return ('0'+x.toString(16)).slice(-2);}).join(''); }
+  function bytes(s){ return Uint8Array.from(atob(s),function(c){return c.charCodeAt(0);}); }
+  function viaGithub(){   // tweede route: de link staat versleuteld naast deze pagina (sleutel = jouw geheime kanaal)
+    if(!window.crypto||!crypto.subtle) return Promise.resolve(null);
+    return sha('naam:'+kanaal).then(function(h){ return fetch('l/'+hex(h).slice(0,32)+'.json?'+Date.now(),{cache:'no-store'}); })
+      .then(function(r){ return r.ok?r.json():null; }).then(function(d){
+        if(!d) return null;
+        return sha('sleutel:'+kanaal).then(function(kb){ return crypto.subtle.importKey('raw',kb,'AES-GCM',false,['decrypt']); })
+          .then(function(key){ return crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(d.iv)},key,bytes(d.ct)); })
+          .then(function(pt){ var l=new TextDecoder().decode(pt); return patroon.test(l)?{t:d.t,l:l}:null; });
+      }).catch(function(){return null;});
+  }
+  Promise.all([viaNtfy(),viaGithub()]).then(function(r){
+    var beste=null; r.forEach(function(x){ if(x&&(!beste||x.t>beste.t)) beste=x; });
+    if(beste){ location.replace(beste.l); } else { t.textContent='Je overzicht is even niet bereikbaar. Probeer het over een paar minuten opnieuw.'; k.hidden=false; }
+  });
 })();
 </script></body></html>
